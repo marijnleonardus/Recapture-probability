@@ -37,3 +37,24 @@ class QuantumHarmonicOscillator:
         hermite_polynomial = hermite(n)
         norm = 1.0/np.sqrt(2.0**n*math.factorial(n))*(m*self.omega/(pi*hbar))**0.25
         return norm*hermite_polynomial(xi)*np.exp(-0.5*xi**2)
+
+
+class GaussianPotential:
+    def __init__(self, depth, waist):
+        self.depth = depth
+        self.waist = waist
+
+    def calculate_nr_bound_states(self, m):
+        """calculate nr of bound states in a Gaussian potential
+        using the WKB approximation
+
+        Args:
+            m (float): mass
+
+        Returns:
+            nr_bound_states (int): number of bound states
+        """
+        
+        nr_bound_states = self.waist/hbar*np.sqrt(2*m*self.depth/pi)
+        return int(nr_bound_states)
+    
