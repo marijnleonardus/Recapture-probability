@@ -1,145 +1,132 @@
-# author: marijn venderbosch
-# may 2025
 
-# %% 
+# Author: Marijn Venderbosch 
+# Date: May 2025
 
 import numpy as np
-from scipy.constants import pi, hbar, proton_mass, Boltzmann
 import matplotlib.pyplot as plt
-from joblib import Parallel, delayed
-from scipy.integrate import simpson
+from scipy.constants import pi, hbar, proton_mass, Boltzmann
 from numpy.fft import fft, fftshift, ifft, ifftshift
 
-# user defined libraries
+# User-defined modules
 from modules import QuantumHarmonicOscillator, GaussianPotential
 
-us = 1e-6  # [s]
-kHz = 1e3  # [Hz]
-uK = 1e-6  # [K]
+# --- Physical Units ---
+us = 1e-6  #  [s]
+kHz = 1e3  #  [Hz]
+uK = 1e-6  #  [K]
 
-# variables
-mass = 85*proton_mass  # [kg]
-trap_depth_K = 150*uK  # [K]
-trap_freq = 54*kHz  # [Hz] trap frequency
-temperatures = np.array([2*uK, 4*uK])  # [K]
-t_release_max = 60*us  # [s] maximum release time
-waist = 0.9e-6  # [m] waist of the optical tweezers
+# --- System Parameters ---
+mass = 88*proton_mass  # atom mass [kg]
+trap_depth = 50*uK  # trap depth [K]
+trap_frequency = 25*kHz  # trap frequency [Hz]
+waist = 0.8e-6   # optical tweezers waist [m]
 
-omega = 2*pi*trap_freq  # [rad/s] radial trap frequency
+# --- Simulation parameters ---
+temperatures = np.array([0.05*uK, 0.73*uK])
+t_max = 100*us  # [s]
+t_steps = 20  # number of time steps
 
-# %% 
+# Derived quantities
+omega = 2*pi*trap_frequency    # trap angular frequency [rad/s]
 
-# time grid
-nr_timesteps = 20
-t_grid = np.linspace(0, t_release_max, nr_timesteps)
+# --- Grids ---
+# Time grid for release times
+time_vals = np.linspace(0, t_max, t_steps)  # [s]
 
-# Spatial grid parameters
-nr_x = 2048
-x_max = 6e-6  # [m] spatial window half-width
-
-# spatial grid
-x = np.linspace(-x_max, x_max, nr_x)
+# Spatial grid for wavefunction evaluation
+nx = 2048
+x_max = 6e-6    # half-width [m]
+x = np.linspace(-x_max, x_max, nx)
 dx = x[1] - x[0]
 
-# k-space grid
-k = fftshift(np.fft.fftfreq(nr_x, d=dx)*2*pi)
-
-# estimate nr of bound states, divide U0 in Hz by the level spacing in Hz
-trapdepth = trap_depth_K*Boltzmann  # [J]]
-Tweezer = GaussianPotential(trapdepth, waist)  # [K]
-nr_bound_states = Tweezer.calculate_nr_bound_states(mass)  
-print(nr_bound_states)
-
-# Build bound-state basis (first N_states)
-QuantumHO = QuantumHarmonicOscillator(omega, nr_bound_states)
-basis = np.array([QuantumHO.eigenstate(n, x, mass) for n in range(nr_bound_states)])
-
-# Energies of HO levels
-energies = QuantumHO.eigenenergies()
-
-# Precompute momentum-space forms for each basis state
-# shape is (nr_bound_states, nr_x)
-momentum_basis = np.array([
-    fftshift(fft(basis[n], norm='ortho'))
-    for n in range(nr_bound_states)
-])
+# Momentum grid 
+k = fftshift(np.fft.fftfreq(nx, d=dx)*2*pi)  # [rad/m]
 
 
-def comp_recap_single_n(n0):
-    """compute the recapture probability as a function of time
-    for a given initial level n0, n(t=0)
-
-    Args:
-        n0 (int): harmonic oscillator level n at t=0
-
-    Returns:
-        recapture (float): recapture probability
+def prepare_basis(omega, mass, trap_depth, waist, x_grid):
     """
-
-    psi0_momentum = momentum_basis[n0]
-    recapture = np.zeros_like(t_grid)
-
-    for idx, t_final in enumerate(t_grid):
-        # evolve in momentum space using free-space Hamliltonian
-        phi_k_t = psi0_momentum*np.exp(-1j*(hbar*k**2)/(2*mass)*t_final)
-        psi_t = ifft(ifftshift(phi_k_t), norm='ortho')
-
-        # compute overlap integrals
-        overlaps = np.array([
-            simpson(y=np.conj(basis[n])*psi_t, x=x)
-            for n in range(nr_bound_states)
-        ])
-
-        # compute recapture probability
-        recapture[idx] = np.sum(np.abs(overlaps)**2)
-    return recapture
-
-
-def comp_therm_avg_recap(temp):
-    """compute weighted (thermal) average of recapture probability
-    by summing over all starting harmonic oscillator states n(t=0)
-
-    Args:
-        temp (float): temperature in K
-
+    Compute bound-state basis and energies.
     Returns:
-        avg_recapture (np.ndarray): recapture probability as a function of time
+      basis_wavefuncs: np.ndarray, shape (N_states, nx)
+      momentum_basis: np.ndarray, shape (N_states, nx)
+      energies: np.ndarray, shape (N_states,)
     """
-    
-    # Weight probability using normalized Boltzmann distribution
-    weights = np.exp(-energies/(Boltzmann*temp))
-    weights = weights/np.sum(weights)  
+    GaussianBeam = GaussianPotential(trap_depth*Boltzmann, waist)
+    n_states = GaussianBeam.calculate_nr_bound_states(mass)
+    print(f"Number of bound states: {n_states}")
 
-    # Compute all recapture curves in parallel
-    curves = Parallel(n_jobs=-1)(delayed(comp_recap_single_n)(n0) for n0 in range(nr_bound_states))
-    curves = np.array(curves)
+    QuantumHO = QuantumHarmonicOscillator(omega, n_states)
+    basis_wavefuncs = np.array(
+        [QuantumHO.eigenstate(n, x_grid, mass) for n in range(n_states)]
+    )
+    energies = QuantumHO.eigenenergies()
 
-    # Weighted average over levels
-    avg_recapture = np.dot(weights, curves)
-    return avg_recapture
+    # Momentum-space wavefunctions
+    momentum_basis = np.array([
+        fftshift(fft(wf, norm='ortho')) for wf in basis_wavefuncs
+    ])
+
+    return basis_wavefuncs, momentum_basis, energies
 
 
-# %% 
+def compute_recapture_matrix(momentum_basis, basis_wavefuncs, k_grid, time_vals, dx, mass):
+    """
+    Vectorized evolution and overlap calculations:
+      R[t_index, initial_state] = recapture probability
+    """
+    nr_states = momentum_basis.shape[0]
+    # Phase factors for free evolution in momentum space
+    phases = np.exp(-1j*(hbar*k_grid**2)/(2*mass)*time_vals[:, None])
 
-avg_recaptures_curves = np.zeros((len(temperatures), int(nr_timesteps)))
+    # Evolve all states at once: shape (nt, nr_states, nx)
+    evolved_k = momentum_basis[None, :, :]*phases[:, None, :]
+    psi_x = ifft(ifftshift(evolved_k, axes=2), axis=2, norm='ortho')
 
-for i, T in enumerate(temperatures):
-    avg_curve = comp_therm_avg_recap(T)
-    avg_recaptures_curves[i] = avg_curve
+    # Overlap integrals: <basis[m] | psi_x(t; n0)>
+    overlaps = dx*np.tensordot(psi_x, basis_wavefuncs.conj(), axes=([2], [1]))
 
-# %%
+    # Sum over final states to get recapture probabilities
+    recap_prob = np.sum(np.abs(overlaps)**2, axis=2)  # shape (nt, nr_states)
+    return recap_prob
 
-# Plotting the recapture probability
-fig, ax = plt.subplots()
-ax.grid()
-labels = [f'{temp/uK} μK' for temp in temperatures]
-ax.plot(t_grid/us, avg_recaptures_curves.T, label=labels)
-ax.set_xlabel('Release time [μs]')
-ax.set_xlim(0, t_release_max/us)
-ax.set_ylim(0, 1.05)
-ax.set_ylabel('Recapture probability')
-ax.legend()
 
-plt.show()
+def compute_thermal_average(R_matrix, energies, temperatures):
+    """
+    Compute thermal average recapture curves.
+    Returns:
+      avg_curves: np.ndarray, shape (len(temperatures), nt)
+    """
+    avg_list = []
+    for T in temperatures:
+        weights = np.exp(-energies/(Boltzmann*T))
+        weights = 1/weights.sum()*weights
+        avg_list.append(R_matrix.dot(weights))
+    return np.array(avg_list)
 
-# %%
+
+def plot_result(time_vals, avg_curves, temperatures):
+    """
+    Plot recapture probability vs. release time for each temperature.
+    """
+    plt.figure()
+    for curve, T in zip(avg_curves, temperatures):
+        plt.plot(time_vals/us, curve, label=f'{T/uK:.2f} μK')
+    plt.xlabel('Release time [μs]')
+    plt.ylabel('Recapture probability')
+    plt.xlim(0, time_vals.max()/us)
+    plt.ylim(0, 1.05)
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+
+def main():
+    basis_x, basis_k, energies = prepare_basis(omega, mass, trap_depth, waist, x)
+    recapture_prob_matrix = compute_recapture_matrix(basis_k, basis_x, k, time_vals, dx, mass)
+    avg_curves = compute_thermal_average(recapture_prob_matrix, energies, temperatures)
+    plot_result(time_vals, avg_curves, temperatures)
+
+
+if __name__ == '__main__':
+    main()
+
