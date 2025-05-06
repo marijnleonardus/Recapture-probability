@@ -61,6 +61,25 @@ class QuantumHarmonicOscillator:
         return eigenstate """
 
 
+class Statistics:
+    @staticmethod
+    def compute_r_squared(y_true, y_pred):
+        """compute R^2 from the fit and the experimental data.
+
+        Args:
+            y_true (np.ndarray): the exp data
+            y_pred (np.ndarray): the fit points
+
+        Returns:
+            r_squared (float): r^2 of fit 
+        """
+        residuals = y_true - y_pred
+        ss_res = np.sum(residuals**2)
+        ss_tot = np.sum((y_true - np.mean(y_true))**2)
+        r_squared = 1 - (ss_res/ss_tot)
+        return r_squared
+
+
 class GaussianPotential:
     def __init__(self, depth, omega):
         # initilize the Gaussian potential with depth and trap frequency in rad/s

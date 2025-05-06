@@ -3,12 +3,13 @@
 # Date: May 2025
 
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.constants import pi, hbar, proton_mass, Boltzmann
 from numpy.fft import fft, fftshift, ifft, ifftshift
 
 # User-defined modules
-from modules import QuantumHarmonicOscillator, GaussianPotential
+from modules import QuantumHarmonicOscillator, GaussianPotential, Statistics
 
 # --- Physical Units ---
 us = 1e-6  #  [s]
@@ -21,15 +22,30 @@ mass = 85*proton_mass  # atom mass [kg]
 trap_depth = 200*uK  # trap depth [K]
 trap_frequency = 54*kHz  # trap frequency [Hz]
 
-# --- Exp Data
-x_data_string = 'data/0x.npy'
-y_data_string = 'data/0av.npy'
-yerr_data_string = 'data/0e.npy'
+# Raw data 
+use_exp_data = True
 
-# --- Simulation parameters ---
-temperatures = np.array([2.8,4])*uK
-t_max = 60*us  # [s]
-t_steps = 20  # number of time steps
+if use_exp_data:
+    # (release time in us, survival probability, error in survival probability)
+    exp_data = pd.read_csv('data/sorted_data.csv')
+    exp_data_x = exp_data['Release time (us)'].to_numpy()*us  # [s]
+    exp_data_y = exp_data['Surv. prob.'].to_numpy()  # survival probability
+    exp_data_yerr = exp_data['Error surv. prob.'].to_numpy()  # error in survival probability
+
+    # rescale exp data to account for survival probability <100%
+    indices = np.where((exp_data_x < 10*us))
+    surv_prob = np.average(exp_data_y[indices])
+    exp_data_y = exp_data_y/surv_prob
+    exp_data_yerr = exp_data_yerr/surv_prob
+
+    # --- Simulation parameters ---
+    nr_temperatures = 10  # number of temperatures to simulate
+    temperatures = np.linspace(2, 5, nr_temperatures)*uK  # [K]
+    t_max = max(exp_data_x) #60*us  # [s]
+    t_steps = len(exp_data_x)  #  20 #number of time steps
+else:
+    t_max = 60*us  # [s]
+    t_steps =  40 #number of time steps
 
 # Derived quantities
 omega = 2*pi*trap_frequency    # trap angular frequency [rad/s]
@@ -145,43 +161,51 @@ def compute_thermal_average(R_matrix, energies, temperatures):
     return np.array(avg_list)
 
 
-def plot_sim(time_vals, avg_curves, temperatures):
-    """
-    Plot recapture probability vs. release time for each temperature.
-    """
-    plt.figure()
+def compute_best_fit(temperatures, avg_curves):
+
+    r_squared_list = []
     for curve, T in zip(avg_curves, temperatures):
-        plt.plot(time_vals/us, curve, label=f'{T/uK:.2f} μK')
-    plt.xlabel('Release time [μs]')
-    plt.ylabel('Recapture probability')
-    plt.xlim(0, time_vals.max()/us)
-    plt.ylim(0, 1.05)
-    plt.grid(True)
+        rsquared = Statistics.compute_r_squared(exp_data_y, curve)
+        r_squared_list.append(rsquared)
+    r_squared_array = np.array(r_squared_list)
+
+    fig2, ax1 = plt.subplots()
+    ax1.scatter(temperatures/uK, r_squared_array, marker='o', color='navy')
+    ax1.set_xlabel('Temperature [μK]')
+    ax1.set_ylabel('R^2')
+
+    # fit 3rd degree polynomial to the data and plot result
+    coeffs = np.polyfit(temperatures/uK, r_squared_array, deg=3)
+    plot_x_scale = np.linspace(min(temperatures/uK), max(temperatures/uK), 100)
+    fitted_curve = np.polyval(coeffs, plot_x_scale)
+    ax1.plot(plot_x_scale, fitted_curve, color='orange', label='Fit')
+
+    # obtain best T 
+    best_fit_temp = plot_x_scale[np.argmax(fitted_curve)]
+    return best_fit_temp
+
+
+def plot_best_fit(recapture_prob_matrix, energies, fitted_temp):
+    fig3, ax2 = plt.subplots()
+    best_curve = compute_thermal_average(recapture_prob_matrix, energies, [fitted_temp])
+    if use_exp_data:
+        ax2.errorbar(exp_data_x/us, exp_data_y, yerr=exp_data_yerr, markersize=3, fmt='o', capsize=5, label='Exp. data', color='navy')
+    ax2.plot(time_vals/us, best_curve[0,:], label=f'{fitted_temp/uK:.2f} μK')
+    ax2.set_xlabel('Release time [μs]')
+    ax2.set_ylabel('Recapture probability')
+    ax2.set_xlim(0, time_vals.max()/us)
+    ax2.set_ylim(0, 1.05)
+    ax2.legend()
 
 
 def main():
-    # load exp data
-    x_data = np.load(x_data_string)*us
-    y_data = np.load(y_data_string)
-    yerr = np.load(yerr_data_string)
-
-    # rescale exp data to account for survival probability <100%
-    # by taking average of first data points (where curves are flat)
-    indices = np.where((x_data < 5*us))
-    surv_prob = np.average(y_data[indices])
-    y_data = y_data/surv_prob
-    yerr = yerr/surv_prob
-
     # simulate quantum model and plot result
     basis_x, basis_k, energies = prepare_basis(omega, mass, trap_depth, omega, x)
     recapture_prob_matrix = compute_recapture_matrix(basis_k, basis_x, k, dx)
     avg_curves = compute_thermal_average(recapture_prob_matrix, energies, temperatures)
-    plot_sim(time_vals, avg_curves, temperatures)
-
-    # plot experimental data
-    plt.errorbar(x_data/us, y_data, yerr=yerr, markersize=3, fmt='o', capsize=5, label='Exp. data', color='navy')
-    plt.legend()
-
+    fitted_temp = compute_best_fit(temperatures, avg_curves)*uK
+    plot_best_fit(recapture_prob_matrix, energies, fitted_temp)
+        
     #plt.savefig('output/deeptraps.png', dpi=300, bbox_inches='tight')
     plt.show()
 
