@@ -19,7 +19,6 @@ uK = 1e-6  #  [K]
 mass = 85*proton_mass  # atom mass [kg]
 trap_depth = 200*uK  # trap depth [K]
 trap_frequency = 54*kHz  # trap frequency [Hz]
-waist = 0.8e-6   # optical tweezers waist [m]
 
 # --- Exp Data
 x_data_string = 'data/0x.npy'
@@ -48,7 +47,7 @@ dx = x[1] - x[0]
 k = fftshift(np.fft.fftfreq(nx, d=dx)*2*pi)  # [rad/m]
 
 
-def prepare_basis(omega, mass, trap_depth, waist, x_grid):
+def prepare_basis(omega, mass, trap_depth, trap_freq, x_grid):
     """
     Compute bound-state basis and energies.
     Returns:
@@ -56,7 +55,7 @@ def prepare_basis(omega, mass, trap_depth, waist, x_grid):
       momentum_basis: np.ndarray, shape (N_states, nx)
       energies: np.ndarray, shape (N_states,)
     """
-    GaussianBeam = GaussianPotential(trap_depth*Boltzmann, waist)
+    GaussianBeam = GaussianPotential(trap_depth*Boltzmann, trap_freq)
     n_states = GaussianBeam.calculate_nr_bound_states(mass)
     print(f"Number of bound states: {n_states}")
 
@@ -79,7 +78,7 @@ def compute_recapture_matrix(momentum_basis, basis_wavefuncs, k_grid, time_vals,
     Vectorized evolution and overlap calculations:
       R[t_index, initial_state] = recapture probability
     """
-    nr_states = momentum_basis.shape[0]
+    
     # Phase factors for free evolution in momentum space
     phases = np.exp(-1j*(hbar*k_grid**2)/(2*mass)*time_vals[:, None])
 
@@ -143,13 +142,13 @@ def main():
     yerr = yerr/surv_prob
 
     # simulate quantum model and plot result
-    basis_x, basis_k, energies = prepare_basis(omega, mass, trap_depth, waist, x)
+    basis_x, basis_k, energies = prepare_basis(omega, mass, trap_depth, omega, x)
     recapture_prob_matrix = compute_recapture_matrix(basis_k, basis_x, k, time_vals, dx, mass)
     avg_curves = compute_thermal_average(recapture_prob_matrix, energies, temperatures)
     plot_sim(time_vals, avg_curves, temperatures)
 
     # plot experimental data
-    plt.errorbar(x_data/us, y_data, yerr=yerr, ms=3, fmt='o', capsize=5, label='Exp. data', color='navy')
+    plt.errorbar(x_data/us, y_data, yerr=yerr, markersize=3, fmt='o', capsize=5, label='Exp. data', color='navy')
     plt.legend()
 
     #plt.savefig('output/deeptraps.png', dpi=300, bbox_inches='tight')
