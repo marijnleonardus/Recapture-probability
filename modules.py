@@ -2,6 +2,8 @@ import numpy as np
 from scipy.special import hermite
 from scipy.constants import pi, hbar
 import math
+from math import log, exp, lgamma
+
 
 
 class QuantumHarmonicOscillator:
@@ -33,10 +35,12 @@ class QuantumHarmonicOscillator:
             _type_: _description_
         """
         
-        xi = np.sqrt(m*self.omega/hbar)*x
-        hermite_polynomial = hermite(n)
-        norm = 1.0/np.sqrt(2.0**n*math.factorial(n))*(m*self.omega/(pi*hbar))**0.25
-        return norm*hermite_polynomial(xi)*np.exp(-0.5*xi**2)
+        x_hermite = np.sqrt(m*self.omega/hbar)*x
+        hermite_polynomial = hermite(x_hermite)
+        log_norm = -0.5 * (n * log(2.0) + lgamma(n + 1)) + 0.25 * log(m * self.omega / (pi * hbar))
+        norm = np.exp(log_norm)
+        eigenfunction = norm*hermite_polynomial(x_hermite)*np.exp(-0.5*x_hermite**2)
+        return eigenfunction
 
 
 class GaussianPotential:

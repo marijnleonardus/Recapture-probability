@@ -16,14 +16,19 @@ kHz = 1e3  #  [Hz]
 uK = 1e-6  #  [K]
 
 # --- System Parameters ---
-mass = 88*proton_mass  # atom mass [kg]
-trap_depth = 50*uK  # trap depth [K]
-trap_frequency = 25*kHz  # trap frequency [Hz]
+mass = 85*proton_mass  # atom mass [kg]
+trap_depth = 200*uK  # trap depth [K]
+trap_frequency = 54*kHz  # trap frequency [Hz]
 waist = 0.8e-6   # optical tweezers waist [m]
 
+# --- Exp Data
+x_data_string = 'data/0x.npy'
+y_data_string = 'data/0av.npy'
+yerr_data_string = 'data/0e.npy'
+
 # --- Simulation parameters ---
-temperatures = np.array([0.05*uK, 0.73*uK])
-t_max = 100*us  # [s]
+temperatures = np.array([2.8,4])*uK
+t_max = 60*us  # [s]
 t_steps = 20  # number of time steps
 
 # Derived quantities
@@ -98,13 +103,19 @@ def compute_thermal_average(R_matrix, energies, temperatures):
     """
     avg_list = []
     for T in temperatures:
-        weights = np.exp(-energies/(Boltzmann*T))
-        weights = 1/weights.sum()*weights
+        if T == 0.0:
+        # if the temperature is zero, can't define Boltzmann distribution. 
+        # But just set the weight of the lowest eigenfunctino to 1.
+            weights = np.zeros_like(energies)
+            weights[0] = 1
+        else:
+            weights = np.exp(-energies/(Boltzmann*T))
+            weights = weights/weights.sum()
         avg_list.append(R_matrix.dot(weights))
     return np.array(avg_list)
 
 
-def plot_result(time_vals, avg_curves, temperatures):
+def plot_sim(time_vals, avg_curves, temperatures):
     """
     Plot recapture probability vs. release time for each temperature.
     """
@@ -116,17 +127,34 @@ def plot_result(time_vals, avg_curves, temperatures):
     plt.xlim(0, time_vals.max()/us)
     plt.ylim(0, 1.05)
     plt.grid(True)
-    plt.legend()
-    plt.show()
 
 
 def main():
+    # load exp data
+    x_data = np.load(x_data_string)*us
+    y_data = np.load(y_data_string)
+    yerr = np.load(yerr_data_string)
+
+    # rescale exp data to account for survival probability <100%
+    # by taking average of first data points (where curves are flat)
+    indices = np.where((x_data < 5*us))
+    surv_prob = np.average(y_data[indices])
+    y_data = y_data/surv_prob
+    yerr = yerr/surv_prob
+
+    # simulate quantum model and plot result
     basis_x, basis_k, energies = prepare_basis(omega, mass, trap_depth, waist, x)
     recapture_prob_matrix = compute_recapture_matrix(basis_k, basis_x, k, time_vals, dx, mass)
     avg_curves = compute_thermal_average(recapture_prob_matrix, energies, temperatures)
-    plot_result(time_vals, avg_curves, temperatures)
+    plot_sim(time_vals, avg_curves, temperatures)
+
+    # plot experimental data
+    plt.errorbar(x_data/us, y_data, yerr=yerr, ms=3, fmt='o', capsize=5, label='Exp. data', color='navy')
+    plt.legend()
+
+    #plt.savefig('output/deeptraps.png', dpi=300, bbox_inches='tight')
+    plt.show()
 
 
 if __name__ == '__main__':
     main()
-
