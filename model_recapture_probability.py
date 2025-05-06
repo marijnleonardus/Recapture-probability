@@ -12,6 +12,7 @@ from modules import QuantumHarmonicOscillator, GaussianPotential
 
 # --- Physical Units ---
 us = 1e-6  #  [s]
+um = 1e-6  #  [m]
 kHz = 1e3  #  [Hz]
 uK = 1e-6  #  [K]
 
@@ -50,44 +51,68 @@ k = fftshift(np.fft.fftfreq(nx, d=dx)*2*pi)  # [rad/m]
 def prepare_basis(omega, mass, trap_depth, trap_freq, x_grid):
     """
     Compute bound-state basis and energies.
+
+    Args:
+        omega: float, trap frequency [rad/s]
+        mass: float, mass of the atom [kg]
+        trap_depth: float, trap depth [K]
+        trap_freq: float, trap frequency [Hz]
+        x_grid: np.ndarray, spatial grid for wavefunction evaluation
+
     Returns:
-      basis_wavefuncs: np.ndarray, shape (N_states, nx)
-      momentum_basis: np.ndarray, shape (N_states, nx)
-      energies: np.ndarray, shape (N_states,)
+        basis_wavefuncs: np.ndarray, shape (N_states, nx)
+        momentum_basis: np.ndarray, shape (N_states, nx)
+        energies: np.ndarray, shape (N_states,)
     """
     GaussianBeam = GaussianPotential(trap_depth*Boltzmann, trap_freq)
     n_states = GaussianBeam.calculate_nr_bound_states(mass)
     print(f"Number of bound states: {n_states}")
 
     QuantumHO = QuantumHarmonicOscillator(omega, n_states)
-    basis_wavefuncs = np.array(
-        [QuantumHO.eigenstate(n, x_grid, mass) for n in range(n_states)]
-    )
+    basis_wavefuncs = np.array([QuantumHO.eigenstate(n, x_grid, mass) for n in range(n_states)])
     energies = QuantumHO.eigenenergies()
 
     # Momentum-space wavefunctions
-    momentum_basis = np.array([
-        fftshift(fft(wf, norm='ortho')) for wf in basis_wavefuncs
-    ])
-
+    momentum_basis = np.array([fftshift(fft(wf, norm='ortho')) for wf in basis_wavefuncs])
     return basis_wavefuncs, momentum_basis, energies
 
 
-def compute_recapture_matrix(momentum_basis, basis_wavefuncs, k_grid, time_vals, dx, mass):
+def evolve_wavefunction(k_grid, momentum_basis):
+    """evolve wavefunction in momentum space using free evolution.
+
+    Args:
+        k_grid (np.ndarray): vector of momentum values
+        momentum_basis (np.ndarray): wavefunctions in momentum space (shape: (nr_states, nx))
+
+    Returns:
+        psi_x_evolved: np.ndarray, shape (nt, nr_states, nx)
     """
-    Vectorized evolution and overlap calculations:
-      R[t_index, initial_state] = recapture probability
-    """
-    
+
     # Phase factors for free evolution in momentum space
     phases = np.exp(-1j*(hbar*k_grid**2)/(2*mass)*time_vals[:, None])
 
     # Evolve all states at once: shape (nt, nr_states, nx)
     evolved_k = momentum_basis[None, :, :]*phases[:, None, :]
-    psi_x = ifft(ifftshift(evolved_k, axes=2), axis=2, norm='ortho')
+    psi_x_evolved = ifft(ifftshift(evolved_k, axes=2), axis=2, norm='ortho')
+    return psi_x_evolved
 
-    # Overlap integrals: <basis[m] | psi_x(t; n0)>
-    overlaps = dx*np.tensordot(psi_x, basis_wavefuncs.conj(), axes=([2], [1]))
+
+def compute_recapture_matrix(momentum_basis, basis_wavefuncs, k_grid, dx):
+    """
+    Vectorized evolution and overlap calculations:
+
+    Args:
+        momentum_basis (np.ndarray): wavefunctions in momentum space (shape: (nr_states, nx))
+        basis_wavefuncs (np.ndarray): bound-state wavefunctions in position space (shape: (nr_states, nx))
+        k_grid (np.ndarray): vector of momentum values
+        dx (float): grid spacing in position space
+
+    Returns:
+        recap_prob[t_index, initial_state] = recapture probability
+    """
+
+    psi_x_evolved = evolve_wavefunction(k_grid, momentum_basis)
+    overlaps = dx*np.tensordot(psi_x_evolved, basis_wavefuncs.conj(), axes=([2], [1]))
 
     # Sum over final states to get recapture probabilities
     recap_prob = np.sum(np.abs(overlaps)**2, axis=2)  # shape (nt, nr_states)
@@ -97,8 +122,14 @@ def compute_recapture_matrix(momentum_basis, basis_wavefuncs, k_grid, time_vals,
 def compute_thermal_average(R_matrix, energies, temperatures):
     """
     Compute thermal average recapture curves.
+
+    Args:
+        R_matrix: np.ndarray, shape (nt, nr_states)
+        energies: np.ndarray, shape (nr_states,)
+        temperatures: np.ndarray, shape (n_temperatures,)
+
     Returns:
-      avg_curves: np.ndarray, shape (len(temperatures), nt)
+        avg_curves: np.ndarray, shape (len(temperatures), nt)
     """
     avg_list = []
     for T in temperatures:
@@ -143,7 +174,7 @@ def main():
 
     # simulate quantum model and plot result
     basis_x, basis_k, energies = prepare_basis(omega, mass, trap_depth, omega, x)
-    recapture_prob_matrix = compute_recapture_matrix(basis_k, basis_x, k, time_vals, dx, mass)
+    recapture_prob_matrix = compute_recapture_matrix(basis_k, basis_x, k, dx)
     avg_curves = compute_thermal_average(recapture_prob_matrix, energies, temperatures)
     plot_sim(time_vals, avg_curves, temperatures)
 
