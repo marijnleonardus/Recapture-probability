@@ -13,7 +13,7 @@ from functions import compute_r_squared, load_exp_data
 from units import us, kHz, uK, um
 
 # System Parameters 
-mass = 88*proton_mass  # atom mass [kg]
+mass = 85*proton_mass  # atom mass [kg]
 trap_depth = 200*uK  # trap depth [K]
 trap_frequency = 54*kHz  # trap frequency [Hz]
 
@@ -24,7 +24,7 @@ max_sim_time = 60*us  # [s] maximum simulation time
 sim_time_steps = 40
 
 # Raw data 
-use_exp_data = True
+use_exp_data = False
 data_name = 'sorted_data.csv'
 unity_surv_time = 15  # [us] where exp data is not flat anymore, to account imaging losses
 
@@ -110,20 +110,18 @@ def compute_thermal_average(R_matrix, energies, temperatures):
     """
     avg_list = []
     for T in temperatures:
-        if T == 0.0:
-        # if the temperature is zero, can't define Boltzmann distribution. 
-        # But just set the weight of the lowest eigenfunctino to 1.
+        # this works even if T is a 1‑element array
+        if np.allclose(T, 0.0):
             weights = np.zeros_like(energies)
             weights[0] = 1
         else:
-            weights = np.exp(-energies/(Boltzmann*T))
-            weights = weights/weights.sum()
+            weights = np.exp(-energies / (Boltzmann * T))
+            weights /= weights.sum()
         avg_list.append(R_matrix.dot(weights))
     return np.array(avg_list)
 
 
 def compute_best_fit(temperatures, avg_curves):
-
     r_squared_list = []
     for curve, T in zip(avg_curves, temperatures):
         rsquared = compute_r_squared(exp_data_y, curve)
@@ -146,29 +144,48 @@ def compute_best_fit(temperatures, avg_curves):
     return best_fit_temp
 
 
-def plot_best_fit(recapture_prob_matrix, energies, fitted_temp):
-    fig3, ax2 = plt.subplots()
-    best_curve = compute_thermal_average(recapture_prob_matrix, energies, [fitted_temp])
+def plot_fit(recapture_prob_matrix, energies, temps):
+    """if you have exp data, show the best fit curve
+    if you have no exp data, show cuves for all temperatures
+     
+    Args:
+        recapture_prob_matrix (np.ndarray)
+        energies (np.ndarray)
+        temps (np.ndarray) """
+    
+    fig, ax = plt.subplots()
+    for T in np.atleast_1d(temps):
+        # compute the single-curve for this T
+        curve = compute_thermal_average(recapture_prob_matrix, energies, [T])[0]
+        ax.plot(time_vals/us, curve, label=f'{T/uK:.2f} μK')
+
     if use_exp_data:
-        ax2.errorbar(exp_data_x/us, exp_data_y, yerr=exp_data_yerr, markersize=3, fmt='o', capsize=5, label='Exp. data', color='navy')
-    ax2.plot(time_vals/us, best_curve[0,:], label=f'{fitted_temp/uK:.2f} μK')
-    ax2.set_xlabel('Release time [μs]')
-    ax2.set_ylabel('Recapture probability')
-    ax2.set_xlim(0, time_vals.max()/us)
-    ax2.set_ylim(0, 1.05)
-    ax2.legend()
+        ax.errorbar(
+            exp_data_x/us, exp_data_y, yerr=exp_data_yerr,
+            fmt='o', capsize=5, label='Exp. data', color='navy'
+        )
+
+    ax.set_xlabel('Release time [μs]')
+    ax.set_ylabel('Recapture probability')
+    ax.set_xlim(0, time_vals.max()/us)
+    ax.set_ylim(0, 1.05)
+    ax.legend()
+    plt.show()
 
 
 def main():
-    # simulate quantum model and plot result
-    basis_x, basis_k, energies = BoundStateBasis(omega, mass, trap_depth, x).prepare()
-    recapture_prob_matrix = compute_recapture_matrix(basis_k, basis_x, k_grid, dx)
-    avg_curves = compute_thermal_average(recapture_prob_matrix, energies, temperatures)
-    fitted_temp = compute_best_fit(temperatures, avg_curves)*uK
-    plot_best_fit(recapture_prob_matrix, energies, fitted_temp)
-        
-    #plt.savefig('output/deeptraps.png', dpi=300, bbox_inches='tight')
+    basis_x, basis_k, wf_energies = BoundStateBasis(omega, mass, trap_depth, x).prepare()
+    R = compute_recapture_matrix(basis_k, basis_x, k_grid, dx)
+
+    if use_exp_data:
+        avg = compute_thermal_average(R, wf_energies, temperatures)
+        fitted_temp = compute_best_fit(temperatures, avg)*uK
+        plot_fit(R, wf_energies, fitted_temp)
+    else:
+        plot_fit(R, wf_energies, temperatures)
+
     plt.show()
+    plt.savefig('output/plot.png', dpi=300, bbox_inches='tight')
 
 
 if __name__ == '__main__':
