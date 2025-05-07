@@ -2,6 +2,10 @@ import numpy as np
 from scipy.special import gammaln, eval_hermite
 from scipy.constants import pi, hbar, Boltzmann, proton_mass
 from numpy import log 
+from numpy.fft import fft, fftshift
+import pandas as pd
+
+from units import us
 
 
 class QuantumHarmonicOscillator:
@@ -61,25 +65,6 @@ class QuantumHarmonicOscillator:
         return eigenstate """
 
 
-class Statistics:
-    @staticmethod
-    def compute_r_squared(y_true, y_pred):
-        """compute R^2 from the fit and the experimental data.
-
-        Args:
-            y_true (np.ndarray): the exp data
-            y_pred (np.ndarray): the fit points
-
-        Returns:
-            r_squared (float): r^2 of fit 
-        """
-        residuals = y_true - y_pred
-        ss_res = np.sum(residuals**2)
-        ss_tot = np.sum((y_true - np.mean(y_true))**2)
-        r_squared = 1 - (ss_res/ss_tot)
-        return r_squared
-
-
 class GaussianPotential:
     def __init__(self, depth, omega):
         # initilize the Gaussian potential with depth and trap frequency in rad/s
@@ -113,9 +98,32 @@ class GaussianPotential:
         waist = self.calculate_waist(m)
         nr_bound_states = waist/hbar*np.sqrt(2*m*self.depth/pi)
         return int(nr_bound_states)
-    
 
-        print(waist)
+
+class BoundStateBasis(GaussianPotential, QuantumHarmonicOscillator):
+    def __init__(self, omega, mass, trap_depth, x_grid):
+        self.omega = omega
+        self.mass = mass
+        self.trap_depth = trap_depth
+        self.x_grid = x_grid
+
+        # Initialize parent classes
+        GaussianPotential.__init__(self, trap_depth*Boltzmann, omega)
+        n_states = self.calculate_nr_bound_states(mass)
+        print(f"Number of bound states: {n_states}")
+        QuantumHarmonicOscillator.__init__(self, omega, n_states)
+
+        self.n_states = n_states
+
+    def prepare(self):
+        x_basis_wf = np.array([
+            self.eigenstate(n, self.x_grid, self.mass) for n in range(self.n_states)
+        ])
+        energies = self.eigenenergies()
+        k_basis_wf = np.array([
+            fftshift(fft(wf, norm='ortho')) for wf in x_basis_wf
+        ])
+        return x_basis_wf, k_basis_wf, energies    
 
 
 def main():
