@@ -8,9 +8,9 @@ from scipy.constants import pi, hbar, proton_mass, Boltzmann
 from numpy.fft import fft, fftshift, ifft, ifftshift
 
 # User-defined modules
-from modules import BoundStateBasis
-from functions import compute_r_squared, load_exp_data
-from units import us, kHz, uK, um
+from modules.classes import BoundStateBasis
+from modules.functions import compute_r_squared, load_exp_data
+from modules.units import us, kHz, uK, um
 
 # System Parameters 
 mass = 85*proton_mass  # atom mass [kg]
@@ -46,7 +46,7 @@ time_vals = np.linspace(0, t_max, t_steps)  # [s]
 
 # Spatial grid for wavefunction evaluation
 nx = 2048
-x_max = 6e-6    # half-width [m]
+x_max = 6*um   # half-width [m]
 x = np.linspace(-x_max, x_max, nx)
 dx = x[1] - x[0]
 

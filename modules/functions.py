@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from units import us
+
+from modules.units import us
 
 
 def compute_r_squared(y_true, y_pred):

@@ -5,7 +5,7 @@ from numpy import log
 from numpy.fft import fft, fftshift
 import pandas as pd
 
-from units import us
+from modules.units import us
 
 
 class QuantumHarmonicOscillator:
