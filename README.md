@@ -1,6 +1,6 @@
 Script for modeling the probability of re-capturing a single atom after releasing in an optical tweezer.
 
-The main script is `model_recapture_probability.py` and assisting functions and classes etc. are located in `modules.py` and `functions.py`
+The main script is `model_recapture_probability.py` and assisting functions and classes etc. are located in `modules/classes.py` and `modules/functions.py`
 
 The script works as follows: 
 * first as the atom is trapped in an optical tweezer, it initilizes the wavefunction in a thermal distribution of harmonic oscillator states.
