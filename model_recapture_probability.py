@@ -21,7 +21,7 @@ trap_frequency = 54*kHz  # trap frequency [Hz]
 nr_temperatures = 10  # number of temperatures to simulate
 temperatures = np.linspace(2, 5, nr_temperatures)*uK  # [K]
 max_sim_time = 60*us  # [s] maximum simulation time
-sim_time_steps = 40
+sim_time_steps = 41
 
 # Raw data 
 use_exp_data = False
@@ -74,6 +74,26 @@ def evolve_wavefunction(k_grid, k_basis_wf):
     return psi_x_evolved
 
 
+def plot_wavefunction_expansion(psi_x_evolved, initial_state=0, times_to_plot=None):
+    """
+    Plot the wavefunction in position space
+    """
+    nr_times = np.shape(psi_x_evolved)[0]
+    if times_to_plot is None:
+        # default: first, middle, last
+        times_to_plot = [0, nr_times//2, nr_times - 1]
+
+    fig1, ax1 = plt.subplots(figsize=(3.3, 2.5))
+    for t in times_to_plot:
+        psi_x = psi_x_evolved[t, initial_state, :]
+        prob = np.abs(psi_x)**2
+        ax1.plot(x/um, prob, label=f't={time_vals[t]/us:.0f} μs')
+    ax1.set_xlabel('x [μm]')
+    ax1.set_ylabel(r'$|\psi(x)|^2$')
+    ax1.set_xlim(-2, 2)
+    ax1.legend()
+    plt.tight_layout()
+
 def compute_recapture_matrix(k_basis_wf, x_basis_wf, k_grid, dx):
     """
     Vectorized evolution and overlap calculations:
@@ -93,7 +113,7 @@ def compute_recapture_matrix(k_basis_wf, x_basis_wf, k_grid, dx):
 
     # Sum over final states to get recapture probabilities
     recap_prob = np.sum(np.abs(overlaps)**2, axis=2)  # shape (nt, nr_states)
-    return recap_prob
+    return recap_prob, psi_x_evolved
 
 
 def compute_thermal_average(R_matrix, energies, temperatures):
@@ -175,7 +195,7 @@ def plot_fit(recapture_prob_matrix, energies, temps):
 
 def main():
     basis_x, basis_k, wf_energies = BoundStateBasis(omega, mass, trap_depth, x).prepare()
-    R = compute_recapture_matrix(basis_k, basis_x, k_grid, dx)
+    R, psi_x_evolved = compute_recapture_matrix(basis_k, basis_x, k_grid, dx)
 
     if use_exp_data:
         avg = compute_thermal_average(R, wf_energies, temperatures)
@@ -183,6 +203,7 @@ def main():
         plot_fit(R, wf_energies, fitted_temp)
     else:
         plot_fit(R, wf_energies, temperatures)
+    plot_wavefunction_expansion(psi_x_evolved, initial_state=0)
 
     plt.show()
     plt.savefig('output/plot.png', dpi=300, bbox_inches='tight')
