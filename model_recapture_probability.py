@@ -83,16 +83,17 @@ def plot_wavefunction_expansion(psi_x_evolved, initial_state=0, times_to_plot=No
         # default: first, middle, last
         times_to_plot = [0, nr_times//2, nr_times - 1]
 
-    fig1, ax1 = plt.subplots(figsize=(3.3, 2.5))
+    fig1, ax1 = plt.subplots(figsize=(3.5, 2.8))
     for t in times_to_plot:
         psi_x = psi_x_evolved[t, initial_state, :]
         prob = np.abs(psi_x)**2
-        ax1.plot(x/um, prob, label=f't={time_vals[t]/us:.0f} μs')
-    ax1.set_xlabel('x [μm]')
-    ax1.set_ylabel(r'$|\psi(x)|^2$')
+        ax1.plot(x/um, prob, label=fr'$t={time_vals[t]/us:.0f}$ μs')
+    ax1.set_xlabel('r [μm]')
+    ax1.set_ylabel(r'$|\psi(r)|^2$')
     ax1.set_xlim(-2, 2)
     ax1.legend()
     plt.tight_layout()
+    plt.savefig('output/wavefunction_evolution.pdf', dpi=300, bbox_inches='tight')
 
 def compute_recapture_matrix(k_basis_wf, x_basis_wf, k_grid, dx):
     """
@@ -118,7 +119,7 @@ def compute_recapture_matrix(k_basis_wf, x_basis_wf, k_grid, dx):
 
 def compute_thermal_average(R_matrix, energies, temperatures):
     """
-    Compute thermal average recapture curves.
+    Compute thermal averaged recapture curves.
 
     Args:
         R_matrix: np.ndarray, shape (nt, nr_states)
@@ -180,10 +181,7 @@ def plot_fit(recapture_prob_matrix, energies, temps):
         ax.plot(time_vals/us, curve, label=f'{T/uK:.2f} μK')
 
     if use_exp_data:
-        ax.errorbar(
-            exp_data_x/us, exp_data_y, yerr=exp_data_yerr,
-            fmt='o', capsize=5, label='Exp. data', color='navy'
-        )
+        ax.errorbar(exp_data_x/us, exp_data_y, yerr=exp_data_yerr, fmt='o', capsize=5, label='Exp. data')
 
     ax.set_xlabel('Release time [μs]')
     ax.set_ylabel('Recapture probability')
@@ -198,11 +196,12 @@ def main():
     R, psi_x_evolved = compute_recapture_matrix(basis_k, basis_x, k_grid, dx)
 
     if use_exp_data:
-        avg = compute_thermal_average(R, wf_energies, temperatures)
-        fitted_temp = compute_best_fit(temperatures, avg)*uK
+        thermal_avg_curve = compute_thermal_average(R, wf_energies, temperatures)
+        fitted_temp = compute_best_fit(temperatures, thermal_avg_curve)*uK
         plot_fit(R, wf_energies, fitted_temp)
     else:
         plot_fit(R, wf_energies, temperatures)
+        
     plot_wavefunction_expansion(psi_x_evolved, initial_state=0)
 
     plt.show()
