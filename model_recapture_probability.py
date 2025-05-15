@@ -24,7 +24,7 @@ max_sim_time = 60*us  # [s] maximum simulation time
 sim_time_steps = 41
 
 # Raw data 
-use_exp_data = False
+use_exp_data = True
 data_name = 'sorted_data.csv'
 unity_surv_time = 15  # [us] where exp data is not flat anymore, to account imaging losses
 
@@ -165,24 +165,26 @@ def compute_best_fit(temperatures, avg_curves):
     return best_fit_temp
 
 
-def plot_fit(recapture_prob_matrix, energies, temps):
-    """if you have exp data, show the best fit curve
-    if you have no exp data, show cuves for all temperatures
-     
-    Args:
-        recapture_prob_matrix (np.ndarray)
-        energies (np.ndarray)
-        temps (np.ndarray) """
-    
+def plot_fit_with_exp_data(recapture_prob_matrix, energies, fitted_temp):
+    """Show best-fit curve along with experimental data."""
+    fig, ax = plt.subplots()
+    curve = compute_thermal_average(recapture_prob_matrix, energies, [fitted_temp])[0]
+    ax.plot(time_vals/us, curve, label=f'{fitted_temp/uK:.2f} μK')
+    ax.errorbar(exp_data_x/us, exp_data_y, yerr=exp_data_yerr, fmt='o', capsize=5, label='Exp. data')
+    ax.set_xlabel('Release time [μs]')
+    ax.set_ylabel('Recapture probability')
+    ax.set_xlim(0, time_vals.max()/us)
+    ax.set_ylim(0, 1.05)
+    ax.legend()
+    plt.show()
+
+
+def plot_fit_without_exp_data(recapture_prob_matrix, energies, temps):
+    """Show recapture curves for all temperatures (no experimental data)."""
     fig, ax = plt.subplots()
     for T in np.atleast_1d(temps):
-        # compute the single-curve for this T
         curve = compute_thermal_average(recapture_prob_matrix, energies, [T])[0]
         ax.plot(time_vals/us, curve, label=f'{T/uK:.2f} μK')
-
-    if use_exp_data:
-        ax.errorbar(exp_data_x/us, exp_data_y, yerr=exp_data_yerr, fmt='o', capsize=5, label='Exp. data')
-
     ax.set_xlabel('Release time [μs]')
     ax.set_ylabel('Recapture probability')
     ax.set_xlim(0, time_vals.max()/us)
@@ -198,10 +200,10 @@ def main():
     if use_exp_data:
         thermal_avg_curve = compute_thermal_average(R, wf_energies, temperatures)
         fitted_temp = compute_best_fit(temperatures, thermal_avg_curve)*uK
-        plot_fit(R, wf_energies, fitted_temp)
+        plot_fit_with_exp_data(R, wf_energies, fitted_temp)
     else:
-        plot_fit(R, wf_energies, temperatures)
-        
+        plot_fit_without_exp_data(R, wf_energies, temperatures)
+
     plot_wavefunction_expansion(psi_x_evolved, initial_state=0)
 
     plt.show()
