@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 from scipy.constants import pi, proton_mass
 
 # User-defined modules
-from modules.classes import BoundStateBasis
+from modules.classes import BoundStateBasis, Recapture
 from modules.units import us, kHz, uK, um
-from modules.functions import prepare_grids, compute_recap_curves
+from modules.functions import prepare_grids
 
 # System Parameters 
 mass = 88*proton_mass  # atom mass [kg]
@@ -17,7 +17,7 @@ trap_frequency = 25*kHz  # trap frequency [Hz]
 
 # Simulation parameters
 nr_temperatures = 10  # number of temperatures to simulate
-temperatures = np.array([0.001, 0.73])*uK  # [K]
+temperatures = np.array([0.001, 0.73, 3])*uK  # [K]
 t_max = 100*us  # [s] maximum simulation time
 t_steps = 41
 nx = 2048  # number of position points
@@ -34,7 +34,8 @@ t_grid, x_grid, dx, k_grid = prepare_grids(t_max, t_steps, x_max, nx)
 basis_x, basis_k, wf_energies = BoundStateBasis(omega, mass, trap_depth, x_grid).prepare()
 
 # compute thermally averaged recapture probability curves
-thermal_avg_curve, psi_x_evolved = compute_recap_curves(mass, t_grid, basis_k, basis_x, k_grid, dx, wf_energies, temperatures)
+RecaptureProb = Recapture(mass, t_grid, k_grid, dx, wf_energies, temperatures)
+thermal_avg_curve, psi_x_evolved = RecaptureProb.compute_recap_curves(basis_k, basis_x)
 
 # plot recapture probability curves
 fig, ax = plt.subplots()

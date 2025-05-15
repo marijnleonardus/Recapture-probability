@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from scipy.constants import pi, proton_mass
 
 # User-defined modules
-from modules.classes import BoundStateBasis
-from modules.functions import compute_r_squared, load_exp_data, compute_recap_curves, prepare_grids
+from modules.classes import BoundStateBasis, Recapture
+from modules.functions import compute_r_squared, load_exp_data, prepare_grids
 from modules.units import us, kHz, uK, um
 
 # System Parameters 
@@ -42,7 +42,8 @@ t_grid, x_grid, dx, k_grid = prepare_grids(t_max, t_steps, x_max, nx)
 basis_x, basis_k, wf_energies = BoundStateBasis(omega, mass, trap_depth, x_grid).prepare()
 
 # compute thermally averaged recapture probability curves
-thermal_avg_curve, psi_x_evolved = compute_recap_curves(mass, t_grid, basis_k, basis_x, k_grid, dx, wf_energies, temperatures)
+RecaptureProb = Recapture(mass, t_grid, k_grid, dx, wf_energies, temperatures)
+thermal_avg_curve, psi_x_evolved = RecaptureProb.compute_recap_curves(basis_k, basis_x)
 
 # compute R^2 for all simulated temperatures
 r_squared_list = []
