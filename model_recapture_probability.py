@@ -5,7 +5,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.constants import pi, hbar, proton_mass, Boltzmann
-from numpy.fft import fft, fftshift, ifft, ifftshift
+from numpy.fft import fftshift, ifft, ifftshift
 
 # User-defined modules
 from modules.classes import BoundStateBasis
@@ -22,6 +22,8 @@ nr_temperatures = 10  # number of temperatures to simulate
 temperatures = np.linspace(2, 5, nr_temperatures)*uK  # [K]
 max_sim_time = 60*us  # [s] maximum simulation time
 sim_time_steps = 41
+nx = 2048  # number of position points
+x_max = 6*um   # half-width [m]
 
 # Raw data 
 use_exp_data = True
@@ -45,8 +47,6 @@ omega = 2*pi*trap_frequency    # trap angular frequency [rad/s]
 time_vals = np.linspace(0, t_max, t_steps)  # [s]
 
 # Spatial grid for wavefunction evaluation
-nx = 2048
-x_max = 6*um   # half-width [m]
 x = np.linspace(-x_max, x_max, nx)
 dx = x[1] - x[0]
 
@@ -95,6 +95,7 @@ def plot_wavefunction_expansion(psi_x_evolved, initial_state=0, times_to_plot=No
     plt.tight_layout()
     plt.savefig('output/wavefunction_evolution.pdf', dpi=300, bbox_inches='tight')
 
+
 def compute_recapture_matrix(k_basis_wf, x_basis_wf, k_grid, dx):
     """
     Vectorized evolution and overlap calculations:
@@ -142,6 +143,26 @@ def compute_thermal_average(R_matrix, energies, temperatures):
     return np.array(avg_list)
 
 
+def compute_recap_curves(basis_k, basis_x, k_grid, dx, energies, temperatures):
+    """Compute both recapture probabilities and thermal averages.
+
+    Args:
+        basis_k: np.ndarray, wavefunctions in momentum space
+        basis_x: np.ndarray, wavefunctions in position space
+        k_grid: np.ndarray, momentum grid
+        dx: float, spatial step size
+        energies: np.ndarray, eigenenergies
+        temperatures: np.ndarray, temperatures to simulate
+
+    Returns:
+        recap_matrix: shape (nt, nr_states)
+        thermal_avg_curves: shape (len(temperatures), nt)"""
+    
+    recap_matrix, psi_x_evolved = compute_recapture_matrix(basis_k, basis_x, k_grid, dx)
+    thermal_avg_curves = compute_thermal_average(recap_matrix, energies, temperatures)
+    return thermal_avg_curves, psi_x_evolved
+
+
 def compute_best_fit(temperatures, avg_curves):
     r_squared_list = []
     for curve, T in zip(avg_curves, temperatures):
@@ -165,10 +186,11 @@ def compute_best_fit(temperatures, avg_curves):
     return best_fit_temp
 
 
-def plot_fit_with_exp_data(recapture_prob_matrix, energies, fitted_temp):
+def plot_fit_with_exp_data(thermal_avg_curves, fitted_temp):
     """Show best-fit curve along with experimental data."""
+    idx = np.argmin(np.abs(temperatures - fitted_temp))
+    curve = thermal_avg_curves[idx]
     fig, ax = plt.subplots()
-    curve = compute_thermal_average(recapture_prob_matrix, energies, [fitted_temp])[0]
     ax.plot(time_vals/us, curve, label=f'{fitted_temp/uK:.2f} μK')
     ax.errorbar(exp_data_x/us, exp_data_y, yerr=exp_data_yerr, fmt='o', capsize=5, label='Exp. data')
     ax.set_xlabel('Release time [μs]')
@@ -179,11 +201,12 @@ def plot_fit_with_exp_data(recapture_prob_matrix, energies, fitted_temp):
     plt.show()
 
 
-def plot_fit_without_exp_data(recapture_prob_matrix, energies, temps):
+def plot_fit_without_exp_data(thermal_avg_curves, temperatures_to_plot):
     """Show recapture curves for all temperatures (no experimental data)."""
     fig, ax = plt.subplots()
-    for T in np.atleast_1d(temps):
-        curve = compute_thermal_average(recapture_prob_matrix, energies, [T])[0]
+    for T in np.atleast_1d(temperatures_to_plot):
+        idx = np.argmin(np.abs(temperatures - T))
+        curve = thermal_avg_curves[idx]
         ax.plot(time_vals/us, curve, label=f'{T/uK:.2f} μK')
     ax.set_xlabel('Release time [μs]')
     ax.set_ylabel('Recapture probability')
@@ -195,14 +218,13 @@ def plot_fit_without_exp_data(recapture_prob_matrix, energies, temps):
 
 def main():
     basis_x, basis_k, wf_energies = BoundStateBasis(omega, mass, trap_depth, x).prepare()
-    R, psi_x_evolved = compute_recapture_matrix(basis_k, basis_x, k_grid, dx)
 
     if use_exp_data:
-        thermal_avg_curve = compute_thermal_average(R, wf_energies, temperatures)
+        thermal_avg_curve, psi_x_evolved = compute_recap_curves(basis_k, basis_x, k_grid, dx, wf_energies, temperatures)
         fitted_temp = compute_best_fit(temperatures, thermal_avg_curve)*uK
-        plot_fit_with_exp_data(R, wf_energies, fitted_temp)
+        plot_fit_with_exp_data(thermal_avg_curve, fitted_temp)
     else:
-        plot_fit_without_exp_data(R, wf_energies, temperatures)
+        plot_fit_without_exp_data(thermal_avg_curve, temperatures)
 
     plot_wavefunction_expansion(psi_x_evolved, initial_state=0)
 
